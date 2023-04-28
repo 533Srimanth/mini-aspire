@@ -1,13 +1,16 @@
-from .in_memory.user import InMemoryUserRepository
+from repositories.in_memory.user import InMemoryUserRepository
+from repositories.in_memory.loan import InMemoryLoanRepository
 
 
-class RepositoryContainer:
-    def __init__(self, db: str):
-        self.user_repository = self.__create_user_repository(db)
-
+class RepositoryFactory:
     @staticmethod
-    def __create_user_repository(db):
+    def build_user_repository(db):
         if db == 'IN-MEMORY':
             return InMemoryUserRepository()
+
+    @staticmethod
+    def build_loan_repository(db):
+        if db == 'IN-MEMORY':
+            return InMemoryLoanRepository()
 
 

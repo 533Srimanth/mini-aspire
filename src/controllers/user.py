@@ -1,29 +1,53 @@
-import uuid
-
 from flask import Blueprint, jsonify, request
-from main import app, repository_container
-from models.user import User
-
-user_controller = Blueprint('users', 'users', url_prefix='/users')
-
-
-@user_controller.route('/', methods=['POST'])
-def create():
-    user_json = request.json
-    user_json['id'] = str(uuid.uuid4())
-    user = User.from_dict(user_json)
-    repository_container.user_repository.create(user)
-
-    return jsonify(user.to_dict())
+from models.user import User, UserSignUpRequest, UserLoginRequest, UserLoginResponse, UsersResponse
+from services.user import UserService
+from auth import admin_token_required, token_required
+from config import Config
 
 
-@user_controller.route('/', methods=['GET'])
-def fetch_all():
-    users = repository_container.user_repository.fetch_all()
-    return jsonify(message="Success", count=len(users), users= [x.to_dict() for x in users])
+class UserController(Blueprint):
+    def __init__(self, user_service: UserService, config: Config):
+        super(UserController, self).__init__('users', 'users', url_prefix='/users')
+        self.user_service = user_service
+        self.app_config = config
 
+        @self.route('/', methods=['POST'])
+        def signup():
+            return jsonify(self._signup(request.json))
 
-@user_controller.route('/<id>', methods=['GET'])
-def fetch(id):
-    user = repository_container.user_repository.fetch_by_id(id)
-    return jsonify(user.to_dict())
+        @self.route('/login', methods=['POST'])
+        def login():
+            return jsonify(self._login(request.json))
+
+        @self.route('/', methods=['GET'])
+        def fetch_all():
+            return jsonify(self._fetch_all(headers=request.headers))
+
+        @self.route('/<id>', methods=['GET'])
+        def fetch(id):
+            return jsonify(self._fetch(headers=request.headers, id=id))
+
+    def _signup(self, user_details: dict):
+        user_sign_up_request = UserSignUpRequest.from_dict(user_details)
+        user = self.user_service.create(user_sign_up_request)
+        return user.to_user_response()
+
+    def _login(self, credentials):
+        user_login_request = UserLoginRequest.from_dict(credentials)
+        user, token = self.user_service.login(user_login_request)
+        return UserLoginResponse(
+            token = token,
+            message = "Success",
+            user = user.to_user_response()
+        )
+
+    @admin_token_required
+    def _fetch_all(self):
+        users = self.user_service.fetch_all()
+        return UsersResponse(message="Success", count=len(users), users=[x.to_user_response() for x in users])
+
+    @token_required
+    def _fetch(self, user: User, id: str):
+        assert user.id == id
+        user = self.user_service.fetch_by_id(id)
+        return user.to_user_response()
