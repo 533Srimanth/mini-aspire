@@ -37,9 +37,7 @@ class LoanService:
         try:
             return self.repository.fetch_by_id(id)
         except KeyError:
-            ids = object()
-            ids.id = id
-            raise EntityDoesNotExistException("Loan", ids)
+            raise EntityDoesNotExistException("Loan", {'id': id})
 
     def approve(self, id: str):
         return self.repository.update_loan_status(id, LoanStatus.APPROVED)

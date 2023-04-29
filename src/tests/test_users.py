@@ -1,6 +1,8 @@
 import pytest
 import factory
 
+from exceptions import AuthorizationError, AuthFailedException, AuthHeaderMissingException, EntityDoesNotExistException
+
 
 @pytest.fixture
 def user_controller():
@@ -32,6 +34,9 @@ def test_user_login(user_controller, dummy_user):
     assert user_login_response.message == "Success"
     assert user_login_response.token is not None
     assert user_login_response.user == user
+
+    with pytest.raises(EntityDoesNotExistException):
+        user_controller._login({'email': 'random-email', 'password': 'pw'})
 
 
 def test_fetch_all_users(user_controller, dummy_user):
@@ -65,5 +70,12 @@ def test_fetch_by_id_auth_fail(user_controller, dummy_user):
     user_controller._signup(dummy_user)
     user_login_response = user_controller._login(dummy_user)
 
-    with pytest.raises(Exception):
+    with pytest.raises(AuthFailedException):
         user_controller._fetch(headers={'x-auth-token': 'random-token'}, id=user_login_response.user.id)
+    with pytest.raises(AuthHeaderMissingException):
+        user_controller._fetch(headers={}, id=user_login_response.user.id)
+
+    user2 = user_controller._signup({'name': 'user2', 'email': 'email2', 'password': 'pw'})
+    token2 = user_controller._login({'email': user2.email, 'password': 'pw'}).token
+    with pytest.raises(AuthorizationError):
+        user_controller._fetch(headers={'x-auth-token': token2}, id=user_login_response.user.id)

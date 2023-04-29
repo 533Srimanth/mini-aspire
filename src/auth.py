@@ -1,4 +1,4 @@
-from exceptions import AuthHeaderMissingException, AuthFailedException, EntityDoesNotExistException
+from exceptions import AuthHeaderMissingException, AuthFailedException, EntityDoesNotExistException, AuthorizationError
 
 
 def token_required(func):
@@ -23,7 +23,7 @@ def admin_token_required(func):
 
         token = headers["x-admin-auth-token"]
         if token != self.app_config.admin_token:
-            raise AuthFailedException()
+            raise AuthorizationError()
 
         return func(self, *args, **kwargs)
     return decorator

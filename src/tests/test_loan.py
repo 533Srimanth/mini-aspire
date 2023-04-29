@@ -4,6 +4,7 @@ import datetime
 from models.loan import LoanStatus
 from models.repayment import ScheduledRepayment, ScheduledRepaymentStatus
 from factory import initialize
+from exceptions import AuthorizationError, AuthFailedException, AuthHeaderMissingException, EntityDoesNotExistException
 
 
 def dummy_user():
@@ -32,6 +33,18 @@ def auth_token_and_loan_controller():
     loan_controller = controllers['loan_controller']
 
     return login_response.token, loan_controller
+
+
+@pytest.fixture
+def auth_token_and_controllers():
+    controllers = initialize('user_controller', 'loan_controller')
+
+    user_controller = controllers['user_controller']
+    user_controller._signup(dummy_user())
+    login_response = user_controller._login(dummy_user())
+    loan_controller = controllers['loan_controller']
+
+    return login_response.token, loan_controller, user_controller
 
 
 @pytest.mark.parametrize("loan_details", [dummy_loan(100, 'INR', 5), dummy_loan(10000, 'INR', 3)])
@@ -67,13 +80,12 @@ def test_create_loan(auth_token_and_loan_controller, loan_details):
 
 
 @pytest.mark.parametrize("loan_details", [dummy_loan(100, 'INR', 5), dummy_loan(10000, 'INR', 3)])
-def test_create_loan_auth_fail(auth_token_and_loan_controller, loan_details):
-    token, loan_controller = auth_token_and_loan_controller
-    with pytest.raises(Exception):
+def test_create_loan_auth_fail(auth_token_and_controllers, loan_details):
+    token, loan_controller, user_controller = auth_token_and_controllers
+    with pytest.raises(AuthFailedException):
         loan_controller._create(headers={'x-auth-token': 'random_token'}, loan_details=loan_details)
-    with pytest.raises(Exception):
+    with pytest.raises(AuthHeaderMissingException):
         loan_controller._create(headers={}, loan_details=loan_details)
-
 
 @pytest.mark.parametrize("loan_details", [dummy_loan(100, 'INR', 5), dummy_loan(10000, 'INR', 3)])
 def test_fetch_by_id(auth_token_and_loan_controller, loan_details):
@@ -85,14 +97,28 @@ def test_fetch_by_id(auth_token_and_loan_controller, loan_details):
     assert loan.currency == loan_details['currency']
     assert loan.term == loan_details['term']
 
+    with pytest.raises(EntityDoesNotExistException):
+        loan_controller._fetch_by_id(headers={'x-auth-token': token}, id='random-id')
+
 
 @pytest.mark.parametrize("loan_details", [dummy_loan(100, 'INR', 5), dummy_loan(10000, 'INR', 3)])
-def test_fetch_by_id_auth_fail(auth_token_and_loan_controller, loan_details):
+def test_fetch_by_id_authentication_fail(auth_token_and_loan_controller, loan_details):
     token, loan_controller = auth_token_and_loan_controller
     loan = loan_controller._create(headers={'x-auth-token': token}, loan_details=loan_details)
 
-    with pytest.raises(Exception):
+    with pytest.raises(AuthFailedException):
         loan_controller._fetch_by_id(headers={'x-auth-token': 'random_token'}, id=loan.id)
+
+
+@pytest.mark.parametrize("loan_details", [dummy_loan(100, 'INR', 5), dummy_loan(10000, 'INR', 3)])
+def test_fetch_by_id_authorization_fail(auth_token_and_controllers, loan_details):
+    token, loan_controller, user_controller = auth_token_and_controllers
+    loan = loan_controller._create(headers={'x-auth-token': token}, loan_details=loan_details)
+    user2 = user_controller._signup({'name': 'user2', 'email': 'email2', 'password': 'pw'})
+    token2 = user_controller._login({'email': user2.email, 'password': 'pw'}).token
+
+    with pytest.raises(AuthorizationError):
+        loan_controller._fetch_by_id(headers={'x-auth-token': token2}, id=loan.id)
 
 
 @pytest.mark.parametrize("loan_details", [dummy_loan(100, 'INR', 5), dummy_loan(10000, 'INR', 3)])
@@ -114,7 +140,7 @@ def test_fetch_all_auth_fail(auth_token_and_loan_controller, loan_details):
     loan_controller._create(headers={'x-auth-token': token}, loan_details=loan_details)
     loan_controller._create(headers={'x-auth-token': token}, loan_details=loan_details)
 
-    with pytest.raises(Exception):
+    with pytest.raises(AuthFailedException):
         loan_controller._fetch_all(headers={'x-auth-token': 'random_token'})
 
 
@@ -133,18 +159,26 @@ def test_approve_loan_auth_fail(auth_token_and_loan_controller, loan_details):
     token, loan_controller = auth_token_and_loan_controller
     loan = loan_controller._create(headers={'x-auth-token': token}, loan_details=loan_details)
 
-    with pytest.raises(Exception):
+    with pytest.raises(AuthorizationError):
         loan_controller._approve_loan(headers={'x-admin-auth-token': token}, loan_id=loan.id)
-    with pytest.raises(Exception):
+    with pytest.raises(AuthHeaderMissingException):
         loan_controller._approve_loan(headers={}, loan_id=loan.id)
 
 
 @pytest.mark.parametrize("loan_details", [dummy_loan(100, 'INR', 5)])
-def test_make_customer_repayment(auth_token_and_loan_controller, loan_details):
-    token, loan_controller = auth_token_and_loan_controller
+def test_make_customer_repayment(auth_token_and_controllers, loan_details):
+    token, loan_controller, user_controller = auth_token_and_controllers
     loan = loan_controller._create(headers={'x-auth-token': token}, loan_details=loan_details)
     loan_controller._approve_loan(headers={'x-admin-auth-token': 'admin-token'}, loan_id=loan.id)
     loan = loan_controller._fetch_by_id(headers={'x-auth-token': token}, id=loan.id)
+
+
+    user2 = user_controller._signup({'name': 'user2', 'email': 'email2', 'password': 'pw'})
+    token2 = user_controller._login({'email': user2.email, 'password': 'pw'}).token
+
+    with pytest.raises(AuthorizationError):
+        loan_controller._make_customer_repayment(headers={'x-auth-token': token2}, loan_id=loan.id,
+                                                            repayment_details={'amount': 10, 'currency': 'INR'})
 
     response = loan_controller._make_customer_repayment(headers={'x-auth-token': token}, loan_id=loan.id, repayment_details={'amount': 10, 'currency': 'INR'})
     assert response.scheduled_repayments[0].paid == 10

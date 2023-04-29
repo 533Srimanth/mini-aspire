@@ -8,6 +8,7 @@ from services.loan import LoanService
 from services.user import UserService
 from auth import token_required, admin_token_required
 from config import Config
+from exceptions import AuthorizationError
 
 
 class LoanController(Blueprint):
@@ -46,7 +47,9 @@ class LoanController(Blueprint):
     @token_required
     def _fetch_by_id(self, user: User, id: str):
         loan = self.loan_service.fetch_by_id(id)
-        assert loan.user.id == user.id
+        if loan.user.id != user.id:
+            raise AuthorizationError()
+
         return loan.to_loan_response()
 
     @token_required
@@ -62,7 +65,8 @@ class LoanController(Blueprint):
     def _make_customer_repayment(self, user:User, loan_id: str, repayment_details: dict):
         customer_repayment_request = CustomerRepaymentRequest.from_dict(repayment_details)
         loan = self.loan_service.fetch_by_id(loan_id)
-        assert loan.user.id == user.id
+        if loan.user.id != user.id:
+            raise AuthorizationError()
 
         loan.consume_customer_repayment(customer_repayment_request)
         return CustomerRepaymentResponse(

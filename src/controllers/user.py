@@ -1,8 +1,10 @@
 from flask import Blueprint, jsonify, request
+
 from models.user import User, UserSignUpRequest, UserLoginRequest, UserLoginResponse, UsersResponse
 from services.user import UserService
 from auth import admin_token_required, token_required
 from config import Config
+from exceptions import AuthorizationError
 
 
 class UserController(Blueprint):
@@ -48,6 +50,8 @@ class UserController(Blueprint):
 
     @token_required
     def _fetch(self, user: User, id: str):
-        assert user.id == id
+        if id != user.id:
+            raise AuthorizationError()
+
         user = self.user_service.fetch_by_id(id)
         return user.to_user_response()

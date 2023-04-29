@@ -23,5 +23,4 @@ class InMemoryUserRepository(UserRepository):
         self.token_store[token] = user
 
     def fetch_by_token(self, token: str):
-        print(self.token_store)
         return self.token_store[token]

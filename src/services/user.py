@@ -36,9 +36,7 @@ class UserService:
         try:
             return self.repository.fetch_by_id(id)
         except KeyError:
-            ids = object()
-            ids.id = id
-            raise EntityDoesNotExistException("User", ids)
+            raise EntityDoesNotExistException("User", {'id': id})
 
     def fetch_by_token(self, token: str):
         return self.repository.fetch_by_token(token)
