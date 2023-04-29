@@ -1,0 +1,9 @@
+*
+*.*
+!requirements.txt
+!Makefile
+!.gitignore
+!README.md
+!src/
+!src/**
+*__pycache__*
